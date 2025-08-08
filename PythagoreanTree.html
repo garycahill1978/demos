@@ -117,6 +117,7 @@ function drawTree(x, y, size, angle, depth, maxDepth, counts) {
 function render() {
  const depth = parseInt(slider.value);
       label.textContent = depth;
+ const rootSize = 100; // Define root square size here
 
   const counts = {};
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -124,7 +125,7 @@ function render() {
   ctx.save();
   ctx.translate(canvas.width / 2 + offsetX, canvas.height - 20 + offsetY);
   ctx.scale(zoomFactor, zoomFactor);
-  ctx.translate(-50, 0);
+  ctx.translate(-rootSize / 2, 0);
   const showBounds = document.getElementById("showBounds").checked;
 
   if (showBounds) {
