@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pythagorean Tree – Zoom & Pan</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      padding: 20px;
+      background: #fff;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      cursor: grab;
+      background: white;
+    }
+    canvas:active {
+      cursor: grabbing;
+    }
+    #stats {
+      text-align: left;
+      max-width: 300px;
+      margin: 10px auto;
+      padding: 10px;
+      background: #f9f9f9;
+      border: 1px solid #ccc;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+<label>
+  <input type="checkbox" id="showBounds" onchange="render()"> Show convergence bounds
+</label><br><br>
+
+  <h2>Pythagorean Tree</h2>
+
+  <label>Depth: <span id="depthLabel">10</span></label><br>
+  <input type="range" id="depthSlider" min="1" max="17" value="10"><br><br>
+
+  <button onclick="zoom(1.2)">Zoom In</button>
+  <button onclick="zoom(1 / 1.2)">Zoom Out</button>
+  <button onclick="resetView()">Reset View</button>
+
+  <canvas id="canvas" width="630" height="450"></canvas>
+
+  <div id="stats">
+    <strong>Squares per level:</strong>
+    <ul id="levelStats"></ul>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const slider = document.getElementById("depthSlider");
+    const label = document.getElementById("depthLabel");
+    const levelStats = document.getElementById("levelStats");
+
+    let zoomFactor = 1;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    let isDragging = false;
+    let dragStart = { x: 0, y: 0 };
+
+    function zoom(factor) {
+      zoomFactor *= factor;
+      render();
+    }
+
+    function resetView() {
+      zoomFactor = 1;
+      offsetX = 0;
+      offsetY = 0;
+      render();
+    }
+
+function drawTree(x, y, size, angle, depth, maxDepth, counts) {
+  if (depth > maxDepth || size < 0.2) return;
+
+  counts[depth] = (counts[depth] || 0) + 1;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+
+  const newSize = size * Math.SQRT1_2;
+
+  // --- First draw children so they appear on top (deeper rendered later) ---
+
+  // LEFT CHILD (rotated -45°, attached at top-left)
+  drawTree(0, -size, newSize, -Math.PI / 4, depth + 1, maxDepth, counts);
+
+  // RIGHT CHILD (rotated +45°, mirrored horizontally, attached at top-right)
+  ctx.save();
+  ctx.translate(size, -size); // Move to top-right of current square
+  ctx.rotate(Math.PI / 4);
+  ctx.scale(-1, 1); // Mirror across vertical
+  drawTree(0, 0, newSize, 0, depth + 1, maxDepth, counts);
+  ctx.restore();
+
+  // --- Now draw this square (under its children) ---
+  ctx.lineWidth = Math.max(0.2, size * 0.03);
+  const hue = (depth * 35) % 360;
+  ctx.fillStyle = `hsl(${hue}, 60%, 70%)`;
+  ctx.strokeStyle = 'black';
+
+  ctx.beginPath();
+  ctx.rect(0, -size, size, size);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function render() {
+ const depth = parseInt(slider.value);
+      label.textContent = depth;
+
+  const counts = {};
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+  ctx.translate(canvas.width / 2 + offsetX, canvas.height - 20 + offsetY);
+  ctx.scale(zoomFactor, zoomFactor);
+  ctx.translate(-50, 0);
+  const showBounds = document.getElementById("showBounds").checked;
+
+  if (showBounds) {
+    ctx.save();
+    ctx.lineWidth = 1 / zoomFactor;
+    ctx.strokeStyle = "red";
+    ctx.setLineDash([5 / zoomFactor, 5 / zoomFactor]);
+
+    const baseSize = 100; // Your root square size
+   // const totalHeight = (2 + Math.SQRT2) * baseSize; // ≈ 3.4142
+ const totalHeight = 400; // ≈ 3.4142
+   // const totalWidth = 2 * baseSize * Math.SQRT1_2;  // ≈ 2.8284
+ const totalWidth = 600;  // ≈ 2.8284
+
+    ctx.beginPath();
+    ctx.rect(
+      -totalWidth / 2,
+      -totalHeight,
+      totalWidth,
+      totalHeight
+    );
+    ctx.stroke();
+    ctx.restore();
+  }
+
+
+
+drawTree(0, 0, 100, 0, 0, depth, counts);
+  ctx.restore();
+
+  // 🔢 Update stats panel
+  levelStats.innerHTML = '';
+
+  const yearStart = 2025;
+  const yearStep = 25;
+
+  for (let i = 0; i <= depth; i++) {
+    const li = document.createElement('li');
+    const year = yearStart - (i * yearStep);
+    li.innerHTML = `<strong>Level ${i}</strong>: ${counts[i] || 0} squares, Year: ${year}`;
+    levelStats.appendChild(li);
+  }
+}
+
+    slider.addEventListener("input", render);
+
+    // --- Panning ---
+    canvas.addEventListener("mousedown", (e) => {
+      isDragging = true;
+      dragStart.x = e.offsetX;
+      dragStart.y = e.offsetY;
+    });
+
+    canvas.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
+      const dx = e.offsetX - dragStart.x;
+      const dy = e.offsetY - dragStart.y;
+      offsetX += dx;
+      offsetY += dy;
+      dragStart.x = e.offsetX;
+      dragStart.y = e.offsetY;
+      render();
+    });
+
+    canvas.addEventListener("mouseup", () => {
+      isDragging = false;
+    });
+    canvas.addEventListener("mouseleave", () => {
+      isDragging = false;
+    });
+
+    render();
+  </script>
+</body>
+</html>
