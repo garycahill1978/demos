@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Galton Board – Toggle Curve + Step</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #controls {
+      margin-bottom: 10px;
+    }
+
+    button {
+      margin: 0 5px;
+      padding: 5px 10px;
+      font-size: 14px;
+    }
+
+    #mainContainer {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    canvas {
+      border: 1px solid black;
+      background: #f5f5f5;
+      transform-origin: top center;
+    }
+
+    #binTable {
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    #binTable th, #binTable td {
+      border: 1px solid #ccc;
+      padding: 4px 8px;
+      text-align: center;
+    }
+
+    #status {
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Galton Board – Toggle Curve</h1>
+
+  <div id="controls">
+    <button onclick="resetSimulation()">Reset</button>
+    <button onclick="togglePause()" id="pauseBtn">Pause</button>
+    <button onclick="stepOneBall()" id="stepBtn">Step One Ball</button>
+    <label style="margin-left: 10px;">
+      <input type="checkbox" id="showCurve" checked />
+      Show Curve Fit
+    </label>
+  </div>
+
+  <div id="mainContainer">
+    <canvas id="galtonCanvas" width="840" height="600"></canvas>
+
+    <table id="binTable">
+      <thead>
+        <tr>
+          <th>Bin</th>
+          <th>Count</th>
+          <th>Expected</th>
+        </tr>
+      </thead>
+      <tbody id="binTableBody"></tbody>
+    </table>
+  </div>
+
+  <p id="status">Balls dropped: 0 / 1000</p>
+
+  <script>
+    const canvas = document.getElementById("galtonCanvas");
+    const ctx = canvas.getContext("2d");
+    const statusText = document.getElementById("status");
+    const binTableBody = document.getElementById("binTableBody");
+    const pauseBtn = document.getElementById("pauseBtn");
+    const stepBtn = document.getElementById("stepBtn");
+    const showCurveCheckbox = document.getElementById("showCurve");
+
+    let isPaused = false;
+    let stepInProgress = false; // prevents overlapping step clicks
+
+    function togglePause() {
+      isPaused = !isPaused;
+      pauseBtn.textContent = isPaused ? "Resume" : "Pause";
+      if (!isPaused) update();
+    }
+
+    const numBalls = 1000;
+    const levels = 20;
+    const bins = levels + 1;
+    const pegSpacing = 30;
+    const pegRadius = 2;
+    const ballRadius = 4;
+    const stackScale = 3;
+
+    let binCounts, binBalls, balls, droppedBalls, frameCount, pegRows, normalizedProbs;
+
+    class Ball {
+      constructor() {
+        this.x = canvas.width / 2;
+        this.y = 30;
+        this.level = 0;
+        this.path = [];
+        this.settled = false;
+      }
+
+      update() {
+        if (this.level < levels) {
+          const direction = Math.random() < 0.5 ? -1 : 1;
+          const dx = direction * pegSpacing / 2;
+          const dy = pegSpacing;
+          this.x += dx;
+          this.y += dy;
+          this.path.push(direction);
+          this.level++;
+        } else if (!this.settled) {
+          const bin = this.path.reduce((a, b) => a + (b === 1 ? 1 : 0), 0);
+          const binX = bin * (canvas.width / bins) + (canvas.width / bins) / 2;
+          const binY = canvas.height - (binCounts[bin] + 1) * ((ballRadius * 2 + 1) / stackScale);
+          binCounts[bin]++;
+          binBalls[bin].push({ x: binX, y: binY });
+          updateBinTable();
+          this.settled = true;
+          return false; // remove from active list
+        }
+        return true; // keep animating
+      }
+
+      draw(ctx) {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, ballRadius, 0, Math.PI * 2);
+        ctx.fillStyle = "red";
+        ctx.fill();
+        ctx.closePath();
+      }
+    }
+
+    function binomialCoeff(n, k) {
+      if (k < 0 || k > n) return 0;
+      let res = 1;
+      for (let i = 1; i <= k; i++) {
+        res *= (n - i + 1) / i;
+      }
+      return res;
+    }
+
+    function updateBinTable() {
+      binTableBody.innerHTML = '';
+
+      const visibleBins = binCounts.slice(3, 18);
+      const totalVisibleBalls = visibleBins.reduce((a, b) => a + b, 0);
+
+      const n = levels;
+      const p = 0.5;
+      const binomialProbs = [];
+      for (let k = 3; k <= 17; k++) {
+        const prob = binomialCoeff(n, k) * Math.pow(p, k) * Math.pow(1 - p, n - k);
+        binomialProbs.push(prob);
+      }
+
+      const probSum = binomialProbs.reduce((a, b) => a + b, 0);
+      normalizedProbs = probSum > 0
+        ? binomialProbs.map(pv => pv * totalVisibleBalls / probSum)
+        : new Array(15).fill(0);
+
+      for (let i = 3; i <= 17; i++) {
+        const row = document.createElement('tr');
+        const binCell = document.createElement('td');
+        const countCell = document.createElement('td');
+        const probCell = document.createElement('td');
+        binCell.textContent = i - 3;
+        countCell.textContent = binCounts[i];
+        probCell.textContent = normalizedProbs[i - 3].toFixed(1);
+        row.appendChild(binCell);
+        row.appendChild(countCell);
+        row.appendChild(probCell);
+        binTableBody.appendChild(row);
+      }
+    }
+
+    function setup() {
+      binCounts = new Array(bins).fill(0);
+      binBalls = new Array(bins).fill(0).map(() => []);
+      balls = [];
+      droppedBalls = 0;
+      frameCount = 0;
+      normalizedProbs = new Array(15).fill(0);
+
+      pegRows = [];
+      for (let row = 0; row < levels; row++) {
+        const y = 60 + row * pegSpacing;
+        const numPegs = row + 1;
+        const rowPegs = [];
+        for (let col = 0; col < numPegs; col++) {
+          const x = canvas.width / 2 - (row * pegSpacing) / 2 + col * pegSpacing;
+          rowPegs.push({ x, y });
+        }
+        pegRows.push(rowPegs);
+      }
+
+      updateBinTable();
+      statusText.textContent = `Balls dropped: 0 / ${numBalls}`;
+    }
+
+    function drawGaussianLine() {
+      if (!showCurveCheckbox.checked || !normalizedProbs || normalizedProbs.length < 1) return;
+
+      const binWidth = canvas.width / bins;
+      const points = normalizedProbs.map((count, i) => {
+        const x = (i + 3) * binWidth + binWidth / 2;
+        const y = canvas.height - count * ((ballRadius * 2 + 1) / stackScale);
+        return { x, y };
+      });
+
+      ctx.beginPath();
+      ctx.strokeStyle = 'green';
+      ctx.lineWidth = 2;
+
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length - 1; i++) {
+        const xc = (points[i].x + points[i + 1].x) / 2;
+        const yc = (points[i].y + points[i + 1].y) / 2;
+        ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+      }
+      ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
+      ctx.stroke();
+    }
+
+    function drawBoard() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // pegs
+      for (const row of pegRows) {
+        for (const peg of row) {
+          ctx.beginPath();
+          ctx.arc(peg.x, peg.y, pegRadius, 0, Math.PI * 2);
+          ctx.fillStyle = "black";
+          ctx.fill();
+          ctx.closePath();
+        }
+      }
+
+      // settled balls
+      for (let i = 0; i < bins; i++) {
+        for (const ball of binBalls[i]) {
+          ctx.beginPath();
+          ctx.arc(ball.x, ball.y, ballRadius, 0, Math.PI * 2);
+          ctx.fillStyle = "#3498db";
+          ctx.fill();
+          ctx.closePath();
+        }
+      }
+
+      // active balls
+      for (const ball of balls) {
+        ball.draw(ctx);
+      }
+
+      drawGaussianLine();
+    }
+
+    function update() {
+      if (isPaused) return;
+
+      if (droppedBalls < numBalls && frameCount % 3 === 0) {
+        balls.push(new Ball());
+        droppedBalls++;
+        statusText.textContent = `Balls dropped: ${droppedBalls} / ${numBalls}`;
+      }
+
+      for (let i = balls.length - 1; i >= 0; i--) {
+        const alive = balls[i].update();
+        if (!alive) balls.splice(i, 1);
+      }
+
+      drawBoard();
+      frameCount++;
+
+      if (droppedBalls < numBalls || balls.length > 0) {
+        requestAnimationFrame(update);
+      } else {
+        statusText.textContent = "Simulation complete.";
+      }
+    }
+
+    // --- NEW: Step exactly one ball from drop to settle ---
+    function stepOneBall() {
+      if (stepInProgress) return; // avoid overlapping steps
+      if (droppedBalls >= numBalls) return; // all balls already dropped
+
+      // pause the free-running loop
+      isPaused = true;
+      pauseBtn.textContent = "Resume";
+
+      // if any active balls somehow exist, finish them first in this step
+      // (keeps behavior deterministic per click)
+      stepInProgress = true;
+
+      // if no active balls, spawn exactly one
+      if (balls.length === 0) {
+        balls.push(new Ball());
+        droppedBalls++;
+        statusText.textContent = `Balls dropped: ${droppedBalls} / ${numBalls}`;
+      }
+
+      function animateStep() {
+        let allSettled = true;
+
+        for (let i = balls.length - 1; i >= 0; i--) {
+          const alive = balls[i].update();
+          if (!alive) {
+            balls.splice(i, 1);
+          } else {
+            allSettled = false;
+          }
+        }
+
+        drawBoard();
+
+        if (!allSettled) {
+          requestAnimationFrame(animateStep);
+        } else {
+          stepInProgress = false;
+          // if that was the last ball overall, mark complete
+          if (droppedBalls >= numBalls && balls.length === 0) {
+            statusText.textContent = "Simulation complete.";
+          }
+        }
+      }
+
+      animateStep();
+    }
+    // --- end NEW ---
+
+    function resetSimulation() {
+      isPaused = false;
+      stepInProgress = false;
+      pauseBtn.textContent = "Pause";
+      setup();
+      update();
+    }
+
+    // init
+    setup();
+    update();
+  </script>
+</body>
+</html>
