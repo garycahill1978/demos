@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Pythagorean Tree – Zoom & Pan</title>
+  <meta charset="UTF-8" />
+  <title>Pythagorean Tree – Zoom & Pan (Depth-ordered)</title>
   <style>
     body {
       font-family: sans-serif;
@@ -77,7 +77,8 @@
     render();
   }
 
-  function drawTree(x, y, size, angle, depth, maxDepth, counts) {
+  // Collect squares per depth (no drawing here).
+  function collectTree(x, y, size, angle, depth, maxDepth, buckets, counts) {
     if (depth > maxDepth || size < 0.2) return;
 
     counts[depth] = (counts[depth] || 0) + 1;
@@ -86,31 +87,35 @@
     ctx.translate(x, y);
     ctx.rotate(angle);
 
+    // Store absolute transform to draw later in strict depth order.
+    const matrix = ctx.getTransform();
+    (buckets[depth] ||= []).push({ matrix, size, depth });
+
     const newSize = size * Math.SQRT1_2;
 
-    // LEFT CHILD
-    drawTree(0, -size, newSize, -Math.PI / 4, depth + 1, maxDepth, counts);
+    // Left child
+    collectTree(0, -size, newSize, -Math.PI / 4, depth + 1, maxDepth, buckets, counts);
 
-    // RIGHT CHILD
+    // Right child
     ctx.save();
     ctx.translate(size, -size);
     ctx.rotate(Math.PI / 4);
     ctx.scale(-1, 1);
-    drawTree(0, 0, newSize, 0, depth + 1, maxDepth, counts);
+    collectTree(0, 0, newSize, 0, depth + 1, maxDepth, buckets, counts);
     ctx.restore();
 
-    // CURRENT SQUARE
+    ctx.restore();
+  }
+
+  function drawSquare(size, depth) {
     ctx.lineWidth = Math.max(0.2, size * 0.03);
     const hue = (depth * 35) % 360;
     ctx.fillStyle = `hsl(${hue}, 60%, 70%)`;
-    ctx.strokeStyle = 'black';
-
+    ctx.strokeStyle = "black";
     ctx.beginPath();
     ctx.rect(0, -size, size, size);
     ctx.fill();
     ctx.stroke();
-
-    ctx.restore();
   }
 
   function render() {
@@ -122,13 +127,14 @@
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Apply camera so collected matrices include zoom/pan.
     ctx.save();
     ctx.translate(canvas.width / 2 + offsetX, canvas.height - 20 + offsetY);
     ctx.scale(zoomFactor, zoomFactor);
     ctx.translate(-baseSize / 2, 0); // center root square
 
+    // Optional bounds (uses current camera).
     const showBounds = document.getElementById("showBounds").checked;
-
     if (showBounds) {
       ctx.save();
       ctx.lineWidth = 1 / zoomFactor;
@@ -140,7 +146,7 @@
 
       ctx.beginPath();
       ctx.rect(
-        -totalWidth / 2 + baseSize / 2, // ✅ shift right by half the root square
+        -totalWidth / 2 + baseSize / 2,
         -totalHeight,
         totalWidth,
         totalHeight
@@ -149,17 +155,32 @@
       ctx.restore();
     }
 
-    drawTree(0, 0, baseSize, 0, 0, depth, counts);
+    // 1) Collect all squares per depth with absolute matrices.
+    const buckets = [];
+    collectTree(0, 0, baseSize, 0, 0, depth, buckets, counts);
+
+    // Done with camera for collection.
     ctx.restore();
 
+    // 2) Draw strictly by depth so deeper levels always paint on top.
+    for (let d = 0; d <= depth; d++) {
+      const layer = buckets[d] || [];
+      for (const sq of layer) {
+        ctx.save();
+        ctx.setTransform(sq.matrix);
+        drawSquare(sq.size, d);
+        ctx.restore();
+      }
+    }
+
     // Update stats panel
-    levelStats.innerHTML = '';
+    levelStats.innerHTML = "";
     const yearStart = 2025;
     const yearStep = 25;
 
     for (let i = 0; i <= depth; i++) {
-      const li = document.createElement('li');
-      const year = yearStart - (i * yearStep);
+      const li = document.createElement("li");
+      const year = yearStart - i * yearStep;
       li.innerHTML = `<strong>Level ${i}</strong>: ${counts[i] || 0} squares, Year: ${year}`;
       levelStats.appendChild(li);
     }
@@ -185,12 +206,8 @@
     render();
   });
 
-  canvas.addEventListener("mouseup", () => {
-    isDragging = false;
-  });
-  canvas.addEventListener("mouseleave", () => {
-    isDragging = false;
-  });
+  canvas.addEventListener("mouseup", () => { isDragging = false; });
+  canvas.addEventListener("mouseleave", () => { isDragging = false; });
 
   render();
 </script>
