@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Height & Distance Calculator — Pro Diagram</title>
+  <style>
+    :root {
+      --bg: #0f172a;         /* slate-900 */
+      --panel: #111827;      /* gray-900 */
+      --muted: #94a3b8;      /* slate-400 */
+      --ink: #e5e7eb;        /* gray-200 */
+      --accent: #22c55e;     /* green-500 */
+      --brand: #60a5fa;      /* blue-400 */
+      --warn: #f59e0b;       /* amber-500 */
+      --crit: #ef4444;       /* red-500 */
+      --card: #0b1220;       /* deep */
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+      color: var(--ink); background: radial-gradient(1200px 600px at 70% -10%, #1f2937 0%, var(--bg) 40%);
+    }
+    header { padding: 20px 24px; }
+    h1 { margin: 0 0 6px; font-size: 20px; font-weight: 700; letter-spacing: .2px; }
+    .sub { margin: 0; color: var(--muted); font-size: 13px; }
+
+    .wrap { display: grid; grid-template-columns: 360px 1fr; gap: 16px; padding: 0 16px 24px; }
+    @media (max-width: 1000px) { .wrap { grid-template-columns: 1fr; } }
+
+    .panel { background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01)); border: 1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.04); }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .controls label { grid-column: 1 / -1; font-size: 12px; color: var(--muted); margin-top: 6px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    input[type=number] { width: 100%; padding: 10px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.08); background: #0a0f1d; color: var(--ink); outline: none; }
+    input[type=checkbox] { transform: translateY(1px); }
+
+    .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    button { padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.08); background: #0d1528; color: var(--ink); cursor: pointer; font-weight: 600; }
+    button.primary { background: linear-gradient(180deg, #2563eb, #1d4ed8); border-color: rgba(37,99,235,.5); }
+    button:hover { filter: brightness(1.1); }
+
+    .result { margin-top: 8px; background: var(--card); border: 1px solid rgba(255,255,255,.06); padding: 12px; border-radius: 12px; font-size: 14px; }
+    .result b { color: #93c5fd; }
+
+    canvas { width: 100%; height: 520px; display: block; background: #0a0f1d; border-radius: 14px; border: 1px solid rgba(255,255,255,.08); }
+    .canvas-wrap { position: relative; }
+    .legend { position: absolute; right: 10px; top: 10px; background: rgba(8,12,24,.7); border: 1px solid rgba(255,255,255,.1); padding: 8px 10px; border-radius: 10px; font-size: 12px; color: var(--muted); backdrop-filter: blur(6px); }
+    .legend i { display:inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; transform: translateY(1px); }
+
+    textarea { width: 100%; margin-top: 14px; height: 160px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 13px; padding: 10px; border: 1px solid rgba(255,255,255,.08); background: #0a0f1d; color: var(--ink); border-radius: 12px; resize: vertical; }
+
+    .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Estimate Object Height Using Angles & Distance</h1>
+    <p class="sub"></p>
+  </header>
+
+  <div class="wrap">
+    <section class="panel">
+      <div class="controls">
+        <label>Angles at two positions (θ₁ is farther; θ₂ is closer)</label>
+        <div class="row">
+          <div>
+            <small class="sub">θ₂ — closer (°)</small>
+            <input type="number" id="angleCloser" step="0.1" value="9.4">
+          </div>
+          <div>
+            <small class="sub">θ₁ — farther (°)</small>
+            <input type="number" id="angleFarther" step="0.1" value="8.5">
+          </div>
+        </div>
+
+        <label>Known forward step between positions</label>
+        <div>
+          <small class="sub">d — step closer (m)</small>
+          <input type="number" id="step" step="0.1" value="1" min="0.1" max="10">
+        </div>
+
+        <div class="btns">
+          <button class="primary" id="btnCalc">Calculate</button>
+          <button id="btnZoomIn">Zoom In</button>
+          <button id="btnZoomOut">Zoom Out</button>
+          <button id="btnResetLabels">Reset Labels</button>
+          <button id="btnAutoLabels">Auto‑arrange Labels</button>
+        </div>
+        <div class="hint">Tip: drag labels to reposition them. They gently avoid each other by default.</div>
+      </div>
+
+      <div class="result" id="results">—</div>
+
+      <textarea readonly id="mathSummary">This calculator uses the following equations:
+
+x = d · tan(θ₁) / (tan(θ₂) − tan(θ₁))
+H = x · tan(θ₂)
+
+Where:
+- θ₁ is the angle from the first (farther) position
+- θ₂ is the angle from the second (closer) position
+- d is the distance stepped forward
+- x is the horizontal distance from 2nd position to the object
+- H is the height of the object
+      </textarea>
+    </section>
+
+    <section class="panel canvas-wrap">
+      <canvas id="sketch" width="1400" height="800"></canvas>
+      <div class="legend">
+        <div><i style="background:#60a5fa"></i> line of sight (θ₂ closer)</div>
+        <div><i style="background:#34d399"></i> line of sight (θ₁ farther)</div>
+        <div><i style="background:#ef4444"></i> height H</div>
+        <div><i style="background:#f59e0b"></i> distance x</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // --- State ---
+    let currentScaleFactor = 1;
+    let lastX = 0, lastD = 0, lastH = 0;
+
+    // Label objects keep a relative offset the user can drag
+    const labels = {
+      object:   { text: () => "Object", color: "#e5e7eb", ox: -60, oy: -20, user: false },
+      pos1:     { text: () => "1st position", color: "#93c5fd", ox: -50, oy: 24, user: false },
+      pos2:     { text: () => "2nd position", color: "#34d399", ox: -50, oy: 24, user: false },
+      H:        { text: () => `H ≈ ${lastH.toFixed(2)} m`, color: "#fca5a5", ox: -70, oy: 0, user: false },
+      x:        { text: () => `x ≈ ${lastX.toFixed(2)} m`, color: "#fde68a", ox: 0, oy: 24, user: false }
+    };
+
+    const canvas = document.getElementById('sketch');
+    const ctx = canvas.getContext('2d');
+
+    // Handle crisp rendering on HiDPI
+    function withHiDPI(cnv, ctx, logicalW, logicalH) {
+      const dpr = window.devicePixelRatio || 1;
+      cnv.width = logicalW * dpr;
+      cnv.height = logicalH * dpr;
+      cnv.style.width = logicalW + 'px';
+      cnv.style.height = logicalH + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      withHiDPI(canvas, ctx, Math.round(rect.width), Math.round(rect.height));
+      drawSketch(lastX, lastD, lastH);
+    }
+    new ResizeObserver(resizeCanvas).observe(canvas);
+
+    // --- Math & UI ---
+    function calculate() {
+      const angle2 = parseFloat(document.getElementById('angleCloser').value); // closer θ₂
+      const angle1 = parseFloat(document.getElementById('angleFarther').value); // farther θ₁
+      const d = parseFloat(document.getElementById('step').value);
+
+      const rad1 = angle1 * Math.PI / 180;
+      const rad2 = angle2 * Math.PI / 180;
+
+      const tan1 = Math.tan(rad1);
+      const tan2 = Math.tan(rad2);
+
+      if (angle1 <= 0 || angle2 <= 0 || d <= 0 || tan1 >= tan2) {
+        alert("Ensure:\n- Both angles > 0\n- Farther angle θ₁ < Closer angle θ₂\n- Step distance d > 0");
+        return;
+      }
+
+      let x = d * tan1 / (tan2 - tan1);
+      let H = x * tan2;
+      let totalDistance = x + d;
+
+      x = Math.abs(x);
+      H = Math.abs(H);
+      totalDistance = Math.abs(totalDistance);
+
+      lastX = x; lastD = d; lastH = H;
+
+      document.getElementById('results').innerHTML =
+        `Height ≈ <b>${H.toFixed(2)} m</b> · Distance to base ≈ <b>${totalDistance.toFixed(2)} m</b>`;
+
+      drawSketch(x, d, H, /*autoPlace=*/true);
+    }
+
+    function zoomIn()  { currentScaleFactor *= 1.2; drawSketch(lastX, lastD, lastH); }
+    function zoomOut() { currentScaleFactor /= 1.2; drawSketch(lastX, lastD, lastH); }
+
+    document.getElementById('btnCalc').addEventListener('click', calculate);
+    document.getElementById('btnZoomIn').addEventListener('click', zoomIn);
+    document.getElementById('btnZoomOut').addEventListener('click', zoomOut);
+    document.getElementById('btnResetLabels').addEventListener('click', () => {
+      for (const k in labels) labels[k].user = false; // drop user offsets
+      drawSketch(lastX, lastD, lastH, /*autoPlace=*/true);
+    });
+    document.getElementById('btnAutoLabels').addEventListener('click', () => drawSketch(lastX, lastD, lastH, /*autoPlace=*/true));
+
+    // --- Drawing helpers ---
+    function roundedRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function drawLabel(text, anchorX, anchorY, key, align = 'left') {
+      const L = labels[key];
+      ctx.font = '13px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto';
+      const metrics = ctx.measureText(text);
+      const padX = 6, padY = 4;
+      const w = metrics.width + padX * 2;
+      const h = 18 + padY * 2;
+
+      if (!L.user) { // position relative to anchor unless user dragged
+        L.ox = L.ox ?? 0; L.oy = L.oy ?? 0;
+      }
+      let lx = anchorX + L.ox;
+      let ly = anchorY + L.oy;
+
+      // background chip
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = 'rgba(12,18,36,.9)';
+      roundedRect(lx, ly, w, h, 8);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,.08)';
+      ctx.stroke();
+
+      // tiny leader line from anchor to label
+      ctx.beginPath();
+      ctx.moveTo(anchorX, anchorY);
+      ctx.lineTo(lx + (align==='left'? 0 : w), ly + h/2);
+      ctx.strokeStyle = 'rgba(255,255,255,.25)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // text
+      ctx.fillStyle = L.color || '#e5e7eb';
+      ctx.fillText(text, lx + padX, ly + h - padY - 5);
+
+      return { x: lx, y: ly, w, h };
+    }
+
+    function boxesOverlap(a, b, pad = 6) {
+      return !(a.x + a.w + pad < b.x || b.x + b.w + pad < a.x || a.y + a.h + pad < b.y || b.y + b.h + pad < a.y);
+    }
+
+    function autoPlaceLabels(boxes) {
+      // Gentle repulsion to avoid overlap
+      const ITER = 36; const STEP = 6;
+      for (let k in labels) if (!labels[k].user) { /* allow movement */ }
+      for (let t = 0; t < ITER; t++) {
+        for (let i = 0; i < boxes.length; i++) {
+          for (let j = i + 1; j < boxes.length; j++) {
+            const A = boxes[i], B = boxes[j];
+            if (boxesOverlap(A.box, B.box)) {
+              const dx = (A.box.x + A.box.w/2) - (B.box.x + B.box.w/2);
+              const dy = (A.box.y + A.box.h/2) - (B.box.y + B.box.h/2);
+              const len = Math.hypot(dx, dy) || 1;
+              const ux = dx / len, uy = dy / len;
+              // push away only if not user-placed
+              if (!labels[A.key].user) { labels[A.key].ox += ux * STEP; labels[A.key].oy += uy * STEP; A.box.x += ux * STEP; A.box.y += uy * STEP; }
+              if (!labels[B.key].user) { labels[B.key].ox -= ux * STEP; labels[B.key].oy -= uy * STEP; B.box.x -= ux * STEP; B.box.y -= uy * STEP; }
+            }
+          }
+        }
+      }
+    }
+
+    function drawSketch(x, d, H, autoPlace=false) {
+      const width = canvas.width / (window.devicePixelRatio||1);
+      const height = canvas.height / (window.devicePixelRatio||1);
+      ctx.clearRect(0, 0, width, height);
+
+      // background grid
+      drawGrid(width, height);
+
+      const padding = 60;
+      const maxX = Math.max(1e-6, x + d);
+      const maxY = Math.max(1e-6, H);
+      const xScale = (width - 2 * padding) / maxX;
+      const yScale = (height - 2 * padding) / maxY;
+      const baseScale = Math.min(xScale, yScale);
+      const scale = baseScale * currentScaleFactor;
+
+      const baseX = padding;
+      const baseY = height - padding;
+      const topY = baseY - H * scale;
+
+      const pos1X = baseX + (x + d) * scale; // farther
+      const pos2X = baseX + x * scale;       // closer
+
+      // Ground line
+      ctx.beginPath();
+      ctx.moveTo(padding, baseY);
+      ctx.lineTo(width - padding, baseY);
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Object height
+      ctx.beginPath();
+      ctx.moveTo(baseX, baseY);
+      ctx.lineTo(baseX, topY);
+      ctx.strokeStyle = '#e5e7eb';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Lines of sight
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.moveTo(pos2X, baseY);
+      ctx.lineTo(baseX, topY);
+      ctx.strokeStyle = '#34d399'; // green (θ₁ farther actually intersects same top)
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(pos1X, baseY);
+      ctx.lineTo(baseX, topY);
+      ctx.strokeStyle = '#60a5fa'; // blue (θ₂ closer)
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Observers dots
+      drawDot(pos1X, baseY, '#60a5fa');
+      drawDot(pos2X, baseY, '#34d399');
+
+      // Height bracket
+      ctx.beginPath();
+      ctx.moveTo(baseX - 16, baseY);
+      ctx.lineTo(baseX - 16, topY);
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Distance bracket (x)
+      ctx.beginPath();
+      ctx.moveTo(pos2X, baseY + 12);
+      ctx.lineTo(baseX, baseY + 12);
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Crosshair on top point for clarity
+      drawCross(baseX, topY, 8, '#94a3b8');
+
+      // Labels (potentially auto-placed)
+      const boxes = [];
+      boxes.push({ key: 'object', box: drawLabel(labels.object.text(), baseX, topY, 'object') });
+      boxes.push({ key: 'pos1',   box: drawLabel(labels.pos1.text(), pos1X, baseY, 'pos1') });
+      boxes.push({ key: 'pos2',   box: drawLabel(labels.pos2.text(), pos2X, baseY, 'pos2') });
+      boxes.push({ key: 'H',      box: drawLabel(labels.H.text(), baseX - 16, (topY + baseY)/2, 'H') });
+      boxes.push({ key: 'x',      box: drawLabel(labels.x.text(), (pos2X + baseX)/2, baseY + 12, 'x') });
+
+      if (autoPlace) {
+        autoPlaceLabels(boxes);
+        // Redraw labels after adjustment
+        ctx.clearRect(0, 0, width, height);
+        drawGrid(width, height);
+        // redraw shapes
+        ctx.beginPath(); ctx.moveTo(padding, baseY); ctx.lineTo(width - padding, baseY); ctx.strokeStyle = '#334155'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(baseX, baseY); ctx.lineTo(baseX, topY); ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 3; ctx.stroke();
+        ctx.setLineDash([6,6]); ctx.beginPath(); ctx.moveTo(pos2X, baseY); ctx.lineTo(baseX, topY); ctx.strokeStyle = '#34d399'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pos1X, baseY); ctx.lineTo(baseX, topY); ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+        drawDot(pos1X, baseY, '#60a5fa'); drawDot(pos2X, baseY, '#34d399');
+        ctx.beginPath(); ctx.moveTo(baseX - 16, baseY); ctx.lineTo(baseX - 16, topY); ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(pos2X, baseY + 12); ctx.lineTo(baseX, baseY + 12); ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2; ctx.stroke();
+        drawCross(baseX, topY, 8, '#94a3b8');
+        // draw labels again
+        drawLabel(labels.object.text(), baseX, topY, 'object');
+        drawLabel(labels.pos1.text(), pos1X, baseY, 'pos1');
+        drawLabel(labels.pos2.text(), pos2X, baseY, 'pos2');
+        drawLabel(labels.H.text(), baseX - 16, (topY + baseY)/2, 'H');
+        drawLabel(labels.x.text(), (pos2X + baseX)/2, baseY + 12, 'x');
+      }
+
+      // keep anchors for dragging logic
+      anchors = { baseX, baseY, topY, pos1X, pos2X };
+    }
+
+    function drawGrid(w, h) {
+      const minor = 10, major = 50;
+      ctx.save();
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= w; x += minor) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h);
+        ctx.strokeStyle = x % major === 0 ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.03)';
+        ctx.stroke();
+      }
+      for (let y = 0; y <= h; y += minor) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y);
+        ctx.strokeStyle = y % major === 0 ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.03)';
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawDot(x, y, color) {
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI*2);
+      ctx.fillStyle = color; ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.stroke();
+    }
+
+    function drawCross(x, y, r, color) {
+      ctx.beginPath(); ctx.moveTo(x - r, y); ctx.lineTo(x + r, y);
+      ctx.moveTo(x, y - r); ctx.lineTo(x, y + r);
+      ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+
+    // --- Drag labels ---
+    let dragKey = null; let dragDX = 0; let dragDY = 0; let anchors = {};
+
+    function hitTestLabels(mx, my) {
+      // rebuild boxes at current positions to test hit
+      const { baseX, baseY, topY, pos1X, pos2X } = anchors;
+      const tmp = [];
+      function measure(key, ax, ay) {
+        ctx.font = '13px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto';
+        const text = labels[key].text();
+        const w = ctx.measureText(text).width + 12; const h = 26;
+        const lx = ax + labels[key].ox; const ly = ay + labels[key].oy;
+        tmp.push({ key, rect: { x: lx, y: ly, w, h } });
+      }
+      measure('object', baseX, topY);
+      measure('pos1', pos1X, baseY);
+      measure('pos2', pos2X, baseY);
+      measure('H', baseX - 16, (topY + baseY)/2);
+      measure('x', (pos2X + baseX)/2, baseY + 12);
+      for (let i = tmp.length - 1; i >= 0; i--) { // topmost last — we drew in that order
+        const r = tmp[i].rect;
+        if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) return tmp[i].key;
+      }
+      return null;
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = (e.clientX - rect.left);
+      const my = (e.clientY - rect.top);
+      const k = hitTestLabels(mx, my);
+      if (k) {
+        dragKey = k; labels[k].user = true;
+        // store pointer delta to label origin
+        const ax = anchorFor(k).x, ay = anchorFor(k).y;
+        dragDX = mx - (ax + labels[k].ox);
+        dragDY = my - (ay + labels[k].oy);
+      }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (!dragKey) return;
+      const rect = canvas.getBoundingClientRect();
+      const mx = (e.clientX - rect.left);
+      const my = (e.clientY - rect.top);
+      const a = anchorFor(dragKey);
+      labels[dragKey].ox = mx - a.x - dragDX;
+      labels[dragKey].oy = my - a.y - dragDY;
+      drawSketch(lastX, lastD, lastH);
+    });
+
+    window.addEventListener('mouseup', () => dragKey = null);
+
+    function anchorFor(key) {
+      const { baseX, baseY, topY, pos1X, pos2X } = anchors;
+      switch (key) {
+        case 'object': return { x: baseX, y: topY };
+        case 'pos1':   return { x: pos1X, y: baseY };
+        case 'pos2':   return { x: pos2X, y: baseY };
+        case 'H':      return { x: baseX - 16, y: (topY + baseY) / 2 };
+        case 'x':      return { x: (pos2X + baseX) / 2, y: baseY + 12 };
+      }
+      return { x: 0, y: 0 };
+    }
+
+    // Init with defaults
+    calculate();
+  </script>
+</body>
+</html>
